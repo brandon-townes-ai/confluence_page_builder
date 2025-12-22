@@ -1,0 +1,181 @@
+"""Confluence API client wrapper."""
+
+from urllib.parse import quote
+
+from atlassian import Confluence
+from requests.exceptions import ConnectionError, Timeout
+
+from conflow.exceptions import (
+    AuthenticationError,
+    ConfluenceAPIError,
+    NetworkError,
+    PageNotFoundError,
+    ParentPageError,
+)
+from conflow.models import ConfluenceConfig, CreatedPage, PageContent
+
+
+class ConfluenceClient:
+    """Wrapper around the Confluence API."""
+
+    def __init__(self, config: ConfluenceConfig):
+        """Initialize the Confluence client.
+
+        Args:
+            config: Configuration with credentials and base URL.
+        """
+        self.config = config
+        self._client = Confluence(
+            url=config.base_url,
+            username=config.email,
+            password=config.api_token,
+            cloud=True,
+        )
+
+    def validate_credentials(self) -> bool:
+        """Validate that the credentials are correct.
+
+        Returns:
+            True if credentials are valid.
+
+        Raises:
+            AuthenticationError: If credentials are invalid (401).
+            NetworkError: If there's a network issue.
+
+        Note:
+            403 Forbidden errors are treated as success - the token is valid
+            but may have restricted permissions. Actual operations will fail
+            if permissions are insufficient.
+        """
+        try:
+            # Use a lightweight API call that doesn't require special permissions
+            self._client.get_all_spaces(start=0, limit=1)
+            return True
+        except ConnectionError as e:
+            raise NetworkError(f"Failed to connect to Confluence: {e}")
+        except Timeout as e:
+            raise NetworkError(f"Connection timed out: {e}")
+        except Exception as e:
+            error_str = str(e).lower()
+            # 401 = bad credentials (fail)
+            if "401" in error_str or "unauthorized" in error_str:
+                raise AuthenticationError(
+                    "Authentication failed. Check your email and API token."
+                )
+            # 403 = valid credentials but restricted permissions (continue)
+            # The token is authenticated but may not have broad access
+            # Let actual operations determine if permissions are sufficient
+            if "403" in error_str or "forbidden" in error_str:
+                return True
+            # Other errors
+            raise NetworkError(f"Failed to validate credentials: {e}")
+
+    def get_page_by_id(self, page_id: str) -> PageContent:
+        """Fetch a page by its ID.
+
+        Args:
+            page_id: The Confluence page ID.
+
+        Returns:
+            PageContent with the page details.
+
+        Raises:
+            PageNotFoundError: If the page doesn't exist.
+            ConfluenceAPIError: If the API call fails.
+        """
+        try:
+            page = self._client.get_page_by_id(
+                page_id,
+                expand="body.storage,space",
+            )
+            if not page:
+                raise PageNotFoundError(f"Page with ID {page_id} not found")
+
+            return PageContent(
+                id=str(page["id"]),
+                title=page["title"],
+                body=page["body"]["storage"]["value"],
+                space_key=page["space"]["key"],
+            )
+        except PageNotFoundError:
+            raise
+        except ConnectionError as e:
+            raise NetworkError(f"Failed to connect to Confluence: {e}")
+        except Timeout as e:
+            raise NetworkError(f"Connection timed out: {e}")
+        except Exception as e:
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str:
+                raise PageNotFoundError(f"Page with ID {page_id} not found")
+            if "401" in error_str or "unauthorized" in error_str:
+                raise AuthenticationError(
+                    "Authentication failed. Check your email and API token."
+                )
+            raise ConfluenceAPIError(f"Failed to fetch page {page_id}: {e}")
+
+    def create_page(
+        self,
+        space_key: str,
+        parent_id: str,
+        title: str,
+        body: str,
+    ) -> CreatedPage:
+        """Create a new page under a parent page.
+
+        Args:
+            space_key: The space key where the page will be created.
+            parent_id: The ID of the parent page.
+            title: The title of the new page.
+            body: The body content in storage format.
+
+        Returns:
+            CreatedPage with the new page details.
+
+        Raises:
+            ParentPageError: If the parent page is invalid.
+            ConfluenceAPIError: If the API call fails.
+        """
+        try:
+            result = self._client.create_page(
+                space=space_key,
+                title=title,
+                body=body,
+                parent_id=parent_id,
+                type="page",
+                representation="storage",
+            )
+
+            # Construct URL with proper format including title
+            # Expected: /wiki/spaces/SPACE/pages/ID/URL-Encoded-Title
+            if "_links" in result and "webui" in result["_links"]:
+                # Use the webui link from API if available (most reliable)
+                page_url = f"{self.config.base_url}{result['_links']['webui']}"
+            else:
+                # Fallback: construct URL manually with URL-encoded title
+                url_encoded_title = quote(result["title"], safe='')
+                page_url = f"{self.config.base_url}/spaces/{space_key}/pages/{result['id']}/{url_encoded_title}"
+
+            return CreatedPage(
+                id=str(result["id"]),
+                title=result["title"],
+                url=page_url,
+            )
+        except ConnectionError as e:
+            raise NetworkError(f"Failed to connect to Confluence: {e}")
+        except Timeout as e:
+            raise NetworkError(f"Connection timed out: {e}")
+        except Exception as e:
+            error_str = str(e).lower()
+            if "parent" in error_str or "ancestor" in error_str:
+                raise ParentPageError(
+                    f"Parent page {parent_id} is invalid or inaccessible"
+                )
+            if "401" in error_str or "unauthorized" in error_str:
+                raise AuthenticationError(
+                    "Authentication failed. Check your email and API token."
+                )
+            if "404" in error_str:
+                raise ParentPageError(
+                    f"Parent page {parent_id} not found or space {space_key} doesn't exist"
+                )
+            raise ConfluenceAPIError(f"Failed to create page: {e}")
