@@ -82,3 +82,42 @@ def confirm_creation(title: str, space_key: str, parent_id: str) -> bool:
     except KeyboardInterrupt:
         console.print()
         return False
+
+
+def collect_test_result(scenario_name: str, platform: str) -> str:
+    """Collect a single test result (Pass/Fail/Incomplete) for a scenario.
+
+    Args:
+        scenario_name: Name of the test scenario.
+        platform: Platform name ("Raptor" or "HM400").
+
+    Returns:
+        "P" for Pass, "F" for Fail, or "I" for Incomplete.
+
+    Raises:
+        InteractiveInputError: If user cancels input.
+    """
+    prompt_text = f"  [cyan]{scenario_name}[/cyan] - [bold]{platform}[/bold]"
+
+    while True:
+        try:
+            result = Prompt.ask(
+                prompt_text,
+                choices=["P", "F", "I", "Pass", "Fail", "Incomplete", "p", "f", "i", "pass", "fail", "incomplete"],
+                show_choices=False,
+            )
+            normalized = result.strip().upper()
+
+            if normalized in ["PASS", "P"]:
+                return "P"
+            elif normalized in ["FAIL", "F"]:
+                return "F"
+            elif normalized in ["INCOMPLETE", "I"]:
+                return "I"
+            else:
+                console.print(
+                    "    [yellow]Please enter 'Pass', 'Fail', or 'Incomplete' (or 'P'/'F'/'I')[/yellow]"
+                )
+        except KeyboardInterrupt:
+            console.print()
+            raise InteractiveInputError("User cancelled input")

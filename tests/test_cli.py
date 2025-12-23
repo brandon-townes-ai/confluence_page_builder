@@ -216,3 +216,226 @@ class TestNewCommand:
                     ])
 
                     mock_client.get_page_by_id.assert_called_with("custom-id")
+
+    def test_placeholder_command_line(self, runner):
+        """Test providing placeholder values via command line."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="<p>Hello {{NAME}} from {{LOCATION}}!</p>",
+            space_key="TEST",
+        )
+        mock_client.create_page.return_value = CreatedPage(
+            id="888",
+            title="New Page",
+            url="https://test.atlassian.net/wiki/spaces/TEST/pages/888",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                with patch("conflow.cli.confirm_creation", return_value=True):
+                    result = runner.invoke(cli, [
+                        "new",
+                        "--title", "New Page",
+                        "--parent-page-id", "123",
+                        "--space-key", "TEST",
+                        "-p", "NAME=Alice",
+                        "-p", "LOCATION=Wonderland",
+                    ])
+
+                    assert result.exit_code == 0
+                    # Verify the page was created with substituted values
+                    mock_client.create_page.assert_called_once()
+                    call_args = mock_client.create_page.call_args
+                    assert "Alice" in call_args.kwargs["body"]
+                    assert "Wonderland" in call_args.kwargs["body"]
+
+    def test_placeholder_non_interactive_with_all_values(self, runner):
+        """Test non-interactive mode with all placeholders provided."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="<p>{{NAME}} {{VALUE}}</p>",
+            space_key="TEST",
+        )
+        mock_client.create_page.return_value = CreatedPage(
+            id="888",
+            title="New Page",
+            url="https://test.atlassian.net/wiki/spaces/TEST/pages/888",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                result = runner.invoke(cli, [
+                    "new",
+                    "--title", "New Page",
+                    "--parent-page-id", "123",
+                    "--space-key", "TEST",
+                    "--placeholder", "NAME=Test",
+                    "--placeholder", "VALUE=123",
+                    "--non-interactive",
+                ])
+
+                assert result.exit_code == 0
+                assert "successfully" in result.output.lower()
+
+    def test_placeholder_non_interactive_missing_values(self, runner):
+        """Test non-interactive mode with missing placeholder values."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="<p>{{NAME}} {{VALUE}}</p>",
+            space_key="TEST",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                result = runner.invoke(cli, [
+                    "new",
+                    "--title", "New Page",
+                    "--parent-page-id", "123",
+                    "--space-key", "TEST",
+                    "--placeholder", "NAME=Test",
+                    "--non-interactive",
+                ])
+
+                assert result.exit_code == 1
+                assert "Missing values for placeholders" in result.output
+                assert "VALUE" in result.output
+
+
+class TestTestResultsFlag:
+    """Tests for --test-results flag functionality."""
+
+    def test_test_results_flag_processes_table(self, runner):
+        """Test --test-results flag processes the test table."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+
+        # Template with test table
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="""
+            <h2>Test</h2>
+            <table>
+              <tbody>
+                <tr><th>Scenario</th><th>Test ID</th><th>Variation</th><th>Raptor</th><th>HM400</th></tr>
+                <tr>
+                  <td><p>Load Haul</p></td>
+                  <td><p>TC-001</p></td>
+                  <td><p>N/A</p></td>
+                  <td><p>I</p></td>
+                  <td><p>I</p></td>
+                </tr>
+              </tbody>
+            </table>
+            """,
+            space_key="TEST",
+        )
+        mock_client.create_page.return_value = CreatedPage(
+            id="888",
+            title="New Page",
+            url="https://test.atlassian.net/wiki/spaces/TEST/pages/888",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                with patch("conflow.cli.process_test_results") as mock_process:
+                    with patch("conflow.cli.confirm_creation", return_value=True):
+                        # Mock process_test_results to return modified HTML
+                        mock_process.return_value = "<h2>Test</h2><table><tbody><tr><td>P</td></tr></tbody></table>"
+
+                        result = runner.invoke(cli, [
+                            "new",
+                            "--title", "New Page",
+                            "--parent-page-id", "123",
+                            "--space-key", "TEST",
+                            "--test-results",
+                        ])
+
+                        assert result.exit_code == 0
+                        # Verify process_test_results was called
+                        mock_process.assert_called_once()
+                        # Check that non_interactive=False was passed
+                        call_args = mock_process.call_args
+                        assert call_args[0][1] is False  # Second positional arg is non_interactive
+
+    def test_test_results_with_non_interactive_fails(self, runner):
+        """Test --test-results with --non-interactive fails when table has 'I'."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="""
+            <h2>Test</h2>
+            <table>
+              <tbody>
+                <tr><th>Scenario</th><th>Test ID</th><th>Variation</th><th>Raptor</th><th>HM400</th></tr>
+                <tr>
+                  <td><p>Test</p></td>
+                  <td><p>TC-001</p></td>
+                  <td><p>N/A</p></td>
+                  <td><p>I</p></td>
+                  <td><p>I</p></td>
+                </tr>
+              </tbody>
+            </table>
+            """,
+            space_key="TEST",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                result = runner.invoke(cli, [
+                    "new",
+                    "--title", "New Page",
+                    "--parent-page-id", "123",
+                    "--space-key", "TEST",
+                    "--test-results",
+                    "--non-interactive",
+                ])
+
+                assert result.exit_code != 0
+                assert "incomplete entries" in result.output.lower()
+
+    def test_test_results_skipped_when_flag_absent(self, runner):
+        """Test test results processing is skipped when flag not provided."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="<h2>Test</h2><table><tbody><tr><td>I</td></tr></tbody></table>",
+            space_key="TEST",
+        )
+        mock_client.create_page.return_value = CreatedPage(
+            id="888",
+            title="New Page",
+            url="https://test.atlassian.net/wiki/spaces/TEST/pages/888",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                with patch("conflow.cli.process_test_results") as mock_process:
+                    with patch("conflow.cli.confirm_creation", return_value=True):
+                        result = runner.invoke(cli, [
+                            "new",
+                            "--title", "New Page",
+                            "--parent-page-id", "123",
+                            "--space-key", "TEST",
+                            # Note: no --test-results flag
+                        ])
+
+                        assert result.exit_code == 0
+                        # Verify process_test_results was NOT called
+                        mock_process.assert_not_called()

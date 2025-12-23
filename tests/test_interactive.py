@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from conflow.exceptions import InteractiveInputError
-from conflow.interactive import collect_placeholder_values, confirm_creation
+from conflow.interactive import (
+    collect_placeholder_values,
+    collect_test_result,
+    confirm_creation,
+)
 
 
 class TestCollectPlaceholderValues:
@@ -103,3 +107,100 @@ class TestConfirmCreation:
             result = confirm_creation("Test Page", "TEST", "12345")
 
             assert result is False
+
+
+class TestCollectTestResult:
+    """Tests for collect_test_result function."""
+
+    def test_accepts_pass(self):
+        """Test accepts 'Pass' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "Pass"
+
+            result = collect_test_result("Test Scenario", "Raptor")
+
+            assert result == "P"
+
+    def test_accepts_p(self):
+        """Test accepts 'P' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "P"
+
+            result = collect_test_result("Test Scenario", "Raptor")
+
+            assert result == "P"
+
+    def test_accepts_fail(self):
+        """Test accepts 'Fail' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "Fail"
+
+            result = collect_test_result("Test Scenario", "HM400")
+
+            assert result == "F"
+
+    def test_accepts_f(self):
+        """Test accepts 'F' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "F"
+
+            result = collect_test_result("Test Scenario", "HM400")
+
+            assert result == "F"
+
+    def test_accepts_incomplete(self):
+        """Test accepts 'Incomplete' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "Incomplete"
+
+            result = collect_test_result("Test Scenario", "Raptor")
+
+            assert result == "I"
+
+    def test_accepts_i(self):
+        """Test accepts 'I' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "I"
+
+            result = collect_test_result("Test Scenario", "HM400")
+
+            assert result == "I"
+
+    def test_case_insensitive(self):
+        """Test input is case insensitive."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            # Test lowercase pass
+            mock_prompt.ask.return_value = "pass"
+            result = collect_test_result("Test", "Raptor")
+            assert result == "P"
+
+            # Test mixed case fail
+            mock_prompt.ask.return_value = "fAiL"
+            result = collect_test_result("Test", "Raptor")
+            assert result == "F"
+
+            # Test lowercase incomplete
+            mock_prompt.ask.return_value = "incomplete"
+            result = collect_test_result("Test", "Raptor")
+            assert result == "I"
+
+    def test_reprompts_on_invalid_input(self):
+        """Test reprompts when invalid input is provided."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            # First invalid, then valid
+            mock_prompt.ask.side_effect = ["invalid", "Pass"]
+
+            result = collect_test_result("Test Scenario", "Raptor")
+
+            assert result == "P"
+            assert mock_prompt.ask.call_count == 2
+
+    def test_keyboard_interrupt_raises_error(self):
+        """Test Ctrl+C raises InteractiveInputError."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.side_effect = KeyboardInterrupt()
+
+            with pytest.raises(InteractiveInputError) as exc_info:
+                collect_test_result("Test Scenario", "Raptor")
+
+            assert "cancelled" in str(exc_info.value.message)

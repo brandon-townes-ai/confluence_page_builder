@@ -11,6 +11,7 @@ from conflow.confluence_client import ConfluenceClient
 from conflow.exceptions import ConflowError, InteractiveInputError
 from conflow.interactive import collect_placeholder_values, confirm_creation
 from conflow.template_processor import extract_placeholders, substitute_placeholders
+from conflow.test_results import process_test_results
 
 DEFAULT_TEMPLATE_PAGE_ID = "2129789334"
 
@@ -48,10 +49,22 @@ def cli(ctx, verbose):
     help=f"Template page ID (default: {DEFAULT_TEMPLATE_PAGE_ID})",
 )
 @click.option(
+    "--placeholder",
+    "-p",
+    multiple=True,
+    help='Placeholder value in format KEY=VALUE (e.g., -p PROJECT_NAME="My Project")',
+)
+@click.option(
     "--non-interactive",
     is_flag=True,
     default=False,
     help="Fail if any placeholders need user input",
+)
+@click.option(
+    "--test-results",
+    is_flag=True,
+    default=False,
+    help="Interactively fill in test results table (P/F/I)",
 )
 @click.pass_context
 def new(
@@ -60,12 +73,26 @@ def new(
     parent_page_id: str,
     space_key: str,
     template_page_id: str,
+    placeholder: tuple,
     non_interactive: bool,
+    test_results: bool,
 ):
     """Create a new Confluence page from a template."""
     verbose = ctx.obj.get('verbose', False)
 
     try:
+        # Parse placeholder arguments
+        placeholder_values = {}
+        for p in placeholder:
+            if "=" not in p:
+                console.print(f"[red]Error:[/red] Invalid placeholder format: '{p}'. Use KEY=VALUE")
+                sys.exit(1)
+            key, value = p.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            placeholder_values[key] = value
+            logger.debug(f"Command-line placeholder: {key}={value}")
+
         # Load configuration
         console.print("[dim]Loading configuration...[/dim]")
         logger.debug("Loading configuration from environment")
@@ -107,24 +134,42 @@ def new(
                 f"{', '.join(placeholders)}[/dim]"
             )
 
+        # Check which placeholders still need values
+        missing_placeholders = [p for p in placeholders if p not in placeholder_values]
+
         # Collect placeholder values
-        if placeholders and non_interactive:
-            logger.warning("Non-interactive mode but placeholders found")
+        if missing_placeholders and non_interactive:
+            logger.warning(f"Non-interactive mode but {len(missing_placeholders)} placeholder(s) missing")
             console.print(
-                "[red]Error:[/red] Template has placeholders but --non-interactive "
-                "was specified. Provide placeholder values or run interactively."
+                f"[red]Error:[/red] Missing values for placeholders: {', '.join(missing_placeholders)}. "
+                "Use --placeholder KEY=VALUE or run in interactive mode."
             )
             sys.exit(1)
 
-        values = {}
-        if placeholders:
-            logger.debug("Collecting placeholder values from user")
-            values = collect_placeholder_values(placeholders)
-            logger.debug(f"Collected values for {len(values)} placeholders")
+        values = placeholder_values.copy()
+        if missing_placeholders:
+            logger.debug(f"Collecting {len(missing_placeholders)} placeholder values from user")
+            interactive_values = collect_placeholder_values(missing_placeholders, existing_values=placeholder_values)
+            values.update(interactive_values)
+            logger.debug(f"Collected values for {len(interactive_values)} placeholders")
+        elif placeholders:
+            logger.debug(f"All {len(placeholders)} placeholders provided via command line")
 
         # Substitute placeholders
         logger.debug("Substituting placeholders in template body")
         body = substitute_placeholders(template.body, values)
+
+        # Process test results if enabled
+        if test_results:
+            console.print("[dim]Processing test results table...[/dim]")
+            logger.debug("Processing test results table")
+            try:
+                body = process_test_results(body, non_interactive)
+            except InteractiveInputError:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to process test results: {e}", exc_info=verbose)
+                raise
 
         # Confirm creation
         if not non_interactive:
