@@ -43,11 +43,11 @@ class TestExtractPlaceholders:
         result = extract_placeholders(content)
         assert result == ["PROJECT_NAME", "OWNER_EMAIL"]
 
-    def test_extract_ignores_lowercase(self):
-        """Test that lowercase placeholders are ignored."""
+    def test_extract_accepts_mixed_case(self):
+        """Test that mixed case and lowercase placeholders are accepted."""
         content = "{{VALID}} and {{invalid}} and {{Also_Invalid}}"
         result = extract_placeholders(content)
-        assert result == ["VALID"]
+        assert result == ["VALID", "invalid", "Also_Invalid"]
 
     def test_extract_ignores_numbers(self):
         """Test that placeholders with numbers are ignored."""

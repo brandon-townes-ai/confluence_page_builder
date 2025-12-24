@@ -2,12 +2,14 @@
 
 import logging
 import sys
+from datetime import datetime
 
 import click
 from rich.console import Console
 
 from conflow.config import load_config
 from conflow.confluence_client import ConfluenceClient
+from conflow.documentation_table import process_documentation_table
 from conflow.exceptions import ConflowError, InteractiveInputError
 from conflow.interactive import collect_placeholder_values, confirm_creation
 from conflow.template_processor import extract_placeholders, substitute_placeholders
@@ -134,6 +136,19 @@ def new(
                 f"{', '.join(placeholders)}[/dim]"
             )
 
+        # Automatically populate DATE placeholder with current date
+        # Check for any case variation of DATE (DATE, Date, date, etc.)
+        date_placeholder = None
+        for placeholder in placeholders:
+            if placeholder.upper() == "DATE" and placeholder not in placeholder_values:
+                date_placeholder = placeholder
+                break
+
+        if date_placeholder:
+            current_date = datetime.now().strftime("%b %d, %Y")
+            placeholder_values[date_placeholder] = current_date
+            logger.debug(f"Auto-populated {date_placeholder} placeholder: {current_date}")
+
         # Check which placeholders still need values
         missing_placeholders = [p for p in placeholders if p not in placeholder_values]
 
@@ -158,6 +173,11 @@ def new(
         # Substitute placeholders
         logger.debug("Substituting placeholders in template body")
         body = substitute_placeholders(template.body, values)
+
+        # Process Documentation table to auto-fill Date field
+        console.print("[dim]Processing Documentation table...[/dim]")
+        logger.debug("Processing Documentation table")
+        body = process_documentation_table(body)
 
         # Process test results if enabled
         if test_results:

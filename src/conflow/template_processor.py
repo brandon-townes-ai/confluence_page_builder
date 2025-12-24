@@ -5,7 +5,7 @@ from typing import Dict, List
 
 from conflow.exceptions import TemplateError
 
-PLACEHOLDER_PATTERN = re.compile(r"\{\{([A-Z_]+)\}\}")
+PLACEHOLDER_PATTERN = re.compile(r"\{\{([A-Za-z_]+)\}\}")
 
 
 def extract_placeholders(content: str) -> List[str]:

@@ -309,6 +309,114 @@ class TestNewCommand:
                 assert "Missing values for placeholders" in result.output
                 assert "VALUE" in result.output
 
+    def test_date_placeholder_auto_populated(self, runner):
+        """Test DATE placeholder is automatically populated with current date."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="<p>Date: {{DATE}}</p>",
+            space_key="TEST",
+        )
+        mock_client.create_page.return_value = CreatedPage(
+            id="888",
+            title="New Page",
+            url="https://test.atlassian.net/wiki/spaces/TEST/pages/888",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                result = runner.invoke(cli, [
+                    "new",
+                    "--title", "New Page",
+                    "--parent-page-id", "123",
+                    "--space-key", "TEST",
+                    "--non-interactive",
+                ])
+
+                assert result.exit_code == 0
+                # Verify the page was created with a date
+                mock_client.create_page.assert_called_once()
+                call_args = mock_client.create_page.call_args
+                body = call_args.kwargs["body"]
+                # Check that DATE placeholder was replaced (not still {{DATE}})
+                assert "{{DATE}}" not in body
+                # Check that body contains a date-like string (month abbreviation)
+                assert any(month in body for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
+
+    def test_date_placeholder_can_be_overridden(self, runner):
+        """Test DATE placeholder can be overridden via command line."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="<p>Date: {{DATE}}</p>",
+            space_key="TEST",
+        )
+        mock_client.create_page.return_value = CreatedPage(
+            id="888",
+            title="New Page",
+            url="https://test.atlassian.net/wiki/spaces/TEST/pages/888",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                result = runner.invoke(cli, [
+                    "new",
+                    "--title", "New Page",
+                    "--parent-page-id", "123",
+                    "--space-key", "TEST",
+                    "--placeholder", "DATE=Custom Date",
+                    "--non-interactive",
+                ])
+
+                assert result.exit_code == 0
+                # Verify the page was created with custom date
+                mock_client.create_page.assert_called_once()
+                call_args = mock_client.create_page.call_args
+                body = call_args.kwargs["body"]
+                assert "Custom Date" in body
+
+    def test_date_placeholder_case_insensitive(self, runner):
+        """Test Date placeholder works with different casing (Date, date, DATE)."""
+        mock_config = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_page_by_id.return_value = PageContent(
+            id="999",
+            title="Template",
+            body="<p>Date: {{Date}}</p>",
+            space_key="TEST",
+        )
+        mock_client.create_page.return_value = CreatedPage(
+            id="888",
+            title="New Page",
+            url="https://test.atlassian.net/wiki/spaces/TEST/pages/888",
+        )
+
+        with patch("conflow.cli.load_config", return_value=mock_config):
+            with patch("conflow.cli.ConfluenceClient", return_value=mock_client):
+                result = runner.invoke(cli, [
+                    "new",
+                    "--title", "New Page",
+                    "--parent-page-id", "123",
+                    "--space-key", "TEST",
+                    "--non-interactive",
+                ])
+
+                assert result.exit_code == 0
+                # Verify the page was created with a date
+                mock_client.create_page.assert_called_once()
+                call_args = mock_client.create_page.call_args
+                body = call_args.kwargs["body"]
+                # Check that Date placeholder was replaced (not still {{Date}})
+                assert "{{Date}}" not in body
+                # Check that body contains a date-like string
+                assert any(month in body for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
+
 
 class TestTestResultsFlag:
     """Tests for --test-results flag functionality."""
