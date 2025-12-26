@@ -11,6 +11,8 @@ class ConfluenceConfig(BaseModel):
     base_url: str
     email: str
     api_token: str
+    default_parent_page_id: Optional[str] = None
+    default_space_key: Optional[str] = None
 
 
 class PageContent(BaseModel):

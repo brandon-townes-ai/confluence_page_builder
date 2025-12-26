@@ -84,6 +84,99 @@ def confirm_creation(title: str, space_key: str, parent_id: str) -> bool:
         return False
 
 
+def _parse_page_id(user_input: str) -> str:
+    """Parse page ID from user input.
+
+    Handles formats:
+    - "pageID: 2436039300"
+    - "2436039300"
+    - "pageID:2436039300" (no space)
+
+    Args:
+        user_input: Raw user input string.
+
+    Returns:
+        The extracted page ID, or empty string if invalid.
+    """
+    # Remove whitespace
+    user_input = user_input.strip()
+
+    # Check if it starts with "pageID:" (case-insensitive)
+    if user_input.lower().startswith("pageid:"):
+        # Extract everything after "pageID:"
+        page_id = user_input.split(":", 1)[1].strip()
+    else:
+        # Assume the entire input is the page ID
+        page_id = user_input
+
+    # Validate that it's numeric
+    if not page_id.isdigit():
+        return ""
+
+    return page_id
+
+
+def prompt_for_page_id(non_interactive: bool = False) -> str:
+    """Prompt for page ID to edit.
+
+    Args:
+        non_interactive: If True, raise error instead of prompting.
+
+    Returns:
+        The page ID as a string.
+
+    Raises:
+        InteractiveInputError: If non_interactive=True or user cancels.
+    """
+    if non_interactive:
+        raise InteractiveInputError(
+            "Page ID required for edit mode. Cannot prompt in non-interactive mode."
+        )
+
+    console.print("[bold]Enter the page ID to edit:[/bold]")
+    console.print("[dim]Format: 'pageID: 2436039300' or just '2436039300'[/dim]")
+    console.print()
+
+    try:
+        user_input = Prompt.ask("  [cyan]Page ID[/cyan]")
+
+        # Parse the input - handle both "pageID: 123" and "123" formats
+        page_id = _parse_page_id(user_input)
+
+        if not page_id:
+            raise InteractiveInputError("Invalid page ID format")
+
+        return page_id
+
+    except KeyboardInterrupt:
+        console.print()
+        raise InteractiveInputError("User cancelled input")
+
+
+def confirm_update(title: str, page_id: str) -> bool:
+    """Confirm page update with the user.
+
+    Args:
+        title: The page title.
+        page_id: The page ID.
+
+    Returns:
+        True if user confirms, False otherwise.
+    """
+    console.print()
+    console.print("[bold]Page update summary:[/bold]")
+    console.print(f"  Title: [green]{title}[/green]")
+    console.print(f"  Page ID: [green]{page_id}[/green]")
+    console.print(f"  [yellow]Only test results table will be updated[/yellow]")
+    console.print()
+
+    try:
+        return Confirm.ask("Update this page?", default=True)
+    except KeyboardInterrupt:
+        console.print()
+        return False
+
+
 def collect_test_result(scenario_name: str, platform: str) -> str:
     """Collect a single test result (Pass/Fail/Incomplete) for a scenario.
 

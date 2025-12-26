@@ -1,5 +1,6 @@
 """Confluence API client wrapper."""
 
+import logging
 from urllib.parse import quote
 
 from atlassian import Confluence
@@ -13,6 +14,8 @@ from conflow.exceptions import (
     ParentPageError,
 )
 from conflow.models import ConfluenceConfig, CreatedPage, PageContent
+
+logger = logging.getLogger(__name__)
 
 
 class ConfluenceClient:
@@ -179,3 +182,70 @@ class ConfluenceClient:
                     f"Parent page {parent_id} not found or space {space_key} doesn't exist"
                 )
             raise ConfluenceAPIError(f"Failed to create page: {e}")
+
+    def update_page(
+        self,
+        page_id: str,
+        title: str,
+        body: str,
+        space_key: str,
+    ) -> CreatedPage:
+        """Update an existing page.
+
+        Args:
+            page_id: The ID of the page to update.
+            title: The title of the page (must match current title or be updated).
+            body: The updated body content in storage format.
+            space_key: The space key (required for URL construction).
+
+        Returns:
+            CreatedPage with the updated page details (reusing model for consistency).
+
+        Raises:
+            PageNotFoundError: If the page doesn't exist.
+            ConfluenceAPIError: If the API call fails.
+        """
+        try:
+            # Update the page (version is handled automatically by the library)
+            result = self._client.update_page(
+                page_id=page_id,
+                title=title,
+                body=body,
+                representation="storage",
+            )
+
+            # Construct URL with proper format
+            if "_links" in result and "webui" in result["_links"]:
+                # Use the webui link from API if available (most reliable)
+                page_url = f"{self.config.base_url}{result['_links']['webui']}"
+            else:
+                # Fallback: construct URL manually with URL-encoded title
+                url_encoded_title = quote(result["title"], safe='')
+                page_url = f"{self.config.base_url}/spaces/{space_key}/pages/{result['id']}/{url_encoded_title}"
+
+            return CreatedPage(
+                id=str(result["id"]),
+                title=result["title"],
+                url=page_url,
+            )
+
+        except PageNotFoundError:
+            raise
+        except ConnectionError as e:
+            raise NetworkError(f"Failed to connect to Confluence: {e}")
+        except Timeout as e:
+            raise NetworkError(f"Connection timed out: {e}")
+        except Exception as e:
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str:
+                raise PageNotFoundError(f"Page with ID {page_id} not found")
+            if "401" in error_str or "unauthorized" in error_str:
+                raise AuthenticationError(
+                    "Authentication failed. Check your email and API token."
+                )
+            if "409" in error_str or "conflict" in error_str:
+                raise ConfluenceAPIError(
+                    f"Version conflict when updating page {page_id}. "
+                    "The page may have been modified by another user."
+                )
+            raise ConfluenceAPIError(f"Failed to update page {page_id}: {e}")

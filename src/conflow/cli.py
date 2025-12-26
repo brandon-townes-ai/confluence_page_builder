@@ -11,7 +11,12 @@ from conflow.config import load_config
 from conflow.confluence_client import ConfluenceClient
 from conflow.documentation_table import process_documentation_table
 from conflow.exceptions import ConflowError, InteractiveInputError
-from conflow.interactive import collect_placeholder_values, confirm_creation
+from conflow.interactive import (
+    collect_placeholder_values,
+    confirm_creation,
+    confirm_update,
+    prompt_for_page_id,
+)
 from conflow.template_processor import extract_placeholders, substitute_placeholders
 from conflow.test_results import process_test_results
 
@@ -41,10 +46,134 @@ def cli(ctx, verbose):
         logging.basicConfig(level=logging.WARNING)
 
 
+def _handle_edit_mode(ctx, non_interactive: bool, verbose: bool):
+    """Handle edit mode workflow for updating existing pages.
+
+    Args:
+        ctx: Click context object.
+        non_interactive: Whether to fail on interactive prompts.
+        verbose: Whether verbose logging is enabled.
+    """
+    try:
+        # Load configuration
+        console.print("[dim]Loading configuration...[/dim]")
+        logger.debug("Loading configuration from environment")
+        config = load_config()
+        logger.debug(f"Config loaded: base_url={config.base_url}, email={config.email}")
+
+        # Initialize client
+        logger.debug("Initializing Confluence client")
+        client = ConfluenceClient(config)
+
+        # Validate credentials
+        console.print("[dim]Validating credentials...[/dim]")
+        logger.debug("Validating credentials")
+        try:
+            client.validate_credentials()
+            logger.debug("Credentials validated successfully")
+        except Exception as e:
+            logger.error(f"Credential validation failed: {e}", exc_info=verbose)
+            raise
+
+        # Prompt for page ID
+        console.print()
+        page_id = prompt_for_page_id(non_interactive)
+        logger.debug(f"Page ID to edit: {page_id}")
+
+        # Fetch existing page
+        console.print(f"[dim]Fetching page {page_id}...[/dim]")
+        logger.debug(f"Fetching page ID: {page_id}")
+        try:
+            existing_page = client.get_page_by_id(page_id)
+            logger.debug(f"Page fetched: title={existing_page.title}, space={existing_page.space_key}")
+        except Exception as e:
+            logger.error(f"Failed to fetch page: {e}", exc_info=verbose)
+            raise
+
+        # Process test results (only step that modifies content)
+        console.print("[dim]Processing test results table...[/dim]")
+        logger.debug("Processing test results table")
+        try:
+            updated_body = process_test_results(existing_page.body, non_interactive)
+        except InteractiveInputError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to process test results: {e}", exc_info=verbose)
+            raise
+
+        # Confirm update
+        if not non_interactive:
+            logger.debug("Requesting user confirmation for page update")
+            if not confirm_update(existing_page.title, page_id):
+                logger.info("User cancelled page update")
+                console.print("[yellow]Page update cancelled.[/yellow]")
+                sys.exit(0)
+
+        # Update page
+        console.print("[dim]Updating page...[/dim]")
+        logger.debug(f"Updating page: id={page_id}, title={existing_page.title}")
+        try:
+            updated_page = client.update_page(
+                page_id=page_id,
+                title=existing_page.title,
+                body=updated_body,
+                space_key=existing_page.space_key,
+            )
+            logger.debug(f"Page updated successfully: id={updated_page.id}, url={updated_page.url}")
+        except Exception as e:
+            logger.error(f"Failed to update page: {e}", exc_info=verbose)
+            raise
+
+        console.print()
+        console.print("[bold green]Page updated successfully![/bold green]")
+        console.print(f"  Title: {updated_page.title}")
+        console.print(f"  URL: [link={updated_page.url}]{updated_page.url}[/link]")
+
+    except InteractiveInputError as e:
+        logger.debug(f"Interactive input error: {e.message}")
+        console.print(f"[yellow]{e.message}[/yellow]")
+        sys.exit(e.exit_code)
+    except ConflowError as e:
+        logger.error(f"Conflow error: {e.message}", exc_info=verbose)
+        console.print(f"[red]Error:[/red] {e.message}")
+        sys.exit(e.exit_code)
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        if verbose:
+            console.print("\n[dim]Full traceback logged above[/dim]")
+        sys.exit(99)
+
+
+@cli.command()
+@click.option(
+    "--test-results",
+    is_flag=True,
+    default=True,
+    help="Interactively fill in test results table (P/F/I)",
+)
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    default=False,
+    help="Fail if any test results need user input",
+)
+@click.pass_context
+def edit(ctx, test_results: bool, non_interactive: bool):
+    """Edit an existing Confluence page's test results."""
+    verbose = ctx.obj.get('verbose', False)
+
+    if not test_results:
+        console.print("[yellow]Note:[/yellow] Edit mode currently only supports updating test results.")
+        console.print("The --test-results flag will be enabled automatically.")
+
+    _handle_edit_mode(ctx, non_interactive, verbose)
+
+
 @cli.command()
 @click.option("--title", required=True, help="Title of the new page")
-@click.option("--parent-page-id", required=True, help="ID of the parent page")
-@click.option("--space-key", required=True, help="Confluence space key")
+@click.option("--parent-page-id", help="ID of the parent page (uses CONFLUENCE_DEFAULT_PARENT_PAGE_ID if not provided)")
+@click.option("--space-key", help="Confluence space key (uses CONFLUENCE_DEFAULT_SPACE_KEY if not provided)")
 @click.option(
     "--template-page-id",
     default=DEFAULT_TEMPLATE_PAGE_ID,
@@ -83,6 +212,31 @@ def new(
     verbose = ctx.obj.get('verbose', False)
 
     try:
+        # Load configuration first to get defaults
+        console.print("[dim]Loading configuration...[/dim]")
+        logger.debug("Loading configuration from environment")
+        config = load_config()
+        logger.debug(f"Config loaded: base_url={config.base_url}, email={config.email}")
+
+        # Use config defaults if flags not provided
+        if not parent_page_id:
+            parent_page_id = config.default_parent_page_id
+            if parent_page_id:
+                logger.debug(f"Using default parent page ID from config: {parent_page_id}")
+
+        if not space_key:
+            space_key = config.default_space_key
+            if space_key:
+                logger.debug(f"Using default space key from config: {space_key}")
+
+        # Validate required values (either from flags or config)
+        if not parent_page_id:
+            console.print("[red]Error:[/red] --parent-page-id is required (or set CONFLUENCE_DEFAULT_PARENT_PAGE_ID)")
+            sys.exit(1)
+        if not space_key:
+            console.print("[red]Error:[/red] --space-key is required (or set CONFLUENCE_DEFAULT_SPACE_KEY)")
+            sys.exit(1)
+
         # Parse placeholder arguments
         placeholder_values = {}
         for p in placeholder:
@@ -94,12 +248,6 @@ def new(
             value = value.strip()
             placeholder_values[key] = value
             logger.debug(f"Command-line placeholder: {key}={value}")
-
-        # Load configuration
-        console.print("[dim]Loading configuration...[/dim]")
-        logger.debug("Loading configuration from environment")
-        config = load_config()
-        logger.debug(f"Config loaded: base_url={config.base_url}, email={config.email}")
 
         # Initialize client
         logger.debug("Initializing Confluence client")
