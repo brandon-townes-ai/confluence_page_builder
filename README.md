@@ -27,7 +27,7 @@ CONFLUENCE_EMAIL=you@appliedintuition.co
 CONFLUENCE_API_TOKEN=your_api_token
 
 # Optional - set defaults to avoid specifying on every command
-CONFLUENCE_DEFAULT_PARENT_PAGE_ID=2130313537
+CONFLUENCE_DEFAULT_PARENT_PAGE_ID=2436039354
 CONFLUENCE_DEFAULT_SPACE_KEY=Echelon
 ```
 
@@ -49,27 +49,38 @@ To get an API token:
 
 Conflow has two main commands:
 
+**Quick Start:**
+```bash
+# Create a new page
+poetry run conflow new --title "My Page Title"
+
+# Edit an existing page's test results
+poetry run conflow edit
+```
+
+That's it! Parent page ID and space key are configured in your `.env` file.
+
 ### 1. Create New Page (`conflow new`)
 
 Create a new Confluence page from a template.
 
 ```bash
 # Simple usage (uses config defaults for parent-page-id and space-key)
-conflow new --title "My New Page"
+poetry run conflow new --title "My New Page"
 
 # Create a page with test results
-conflow new --title "Test Report" --test-results
+poetry run conflow new --title "Test Report" --test-results
 
 # Provide placeholder values via command line
-conflow new --title "My Page" \
+poetry run conflow new --title "My Page" \
   -p PROJECT_NAME="My Project" \
   -p OWNER="John Doe"
 
 # Override config defaults if needed
-conflow new --title "My Page" --parent-page-id 999999 --space-key OTHER_SPACE
+poetry run conflow new --title "My Page" --parent-page-id 999999 --space-key OTHER_SPACE
 
 # Create a page with a custom template
-conflow new --title "My Page" --template-page-id 999999
+poetry run conflow new --title "My Page" --template-page-id 999999
 ```
 
 **Options for `conflow new`:**
@@ -91,10 +102,10 @@ Edit an existing Confluence page's test results. Test results are enabled by def
 
 ```bash
 # Edit an existing page (prompts for page ID)
-conflow edit
+poetry run conflow edit
 
 # Enable verbose logging
-conflow --verbose edit
+poetry run conflow --verbose edit
 ```
 
 When you run `conflow edit`, you'll be prompted to enter the page ID:
@@ -129,27 +140,27 @@ There are three ways to provide placeholder values:
 
 1. **Interactive Mode (default)**: You'll be prompted to enter each placeholder value when creating a page.
    ```bash
-   conflow new --title "My Page"
+   poetry run conflow new --title "My Page"
    # Prompts: "Enter value for PROJECT_NAME:", "Enter value for OWNER:", etc.
    ```
 
 2. **Command-Line Mode**: Provide values via `-p` or `--placeholder` flags.
    ```bash
-   conflow new --title "My Page" \
+   poetry run conflow new --title "My Page" \
      -p PROJECT_NAME="My Project" \
      -p OWNER="John Doe"
    ```
 
 3. **Mixed Mode**: Provide some values via command line, get prompted for the rest.
    ```bash
-   conflow new --title "My Page" \
+   poetry run conflow new --title "My Page" \
      -p PROJECT_NAME="My Project"
    # Only prompts for remaining placeholders (e.g., OWNER)
    ```
 
 For automation, use `--non-interactive` to ensure all placeholders are provided via command line:
 ```bash
-conflow new --title "My Page" \
+poetry run conflow new --title "My Page" \
   -p FIELD1="Value1" -p FIELD2="Value2" --non-interactive
 # Fails if any placeholders are missing
 ```
@@ -179,7 +190,7 @@ The test results feature allows you to interactively fill in Pass/Fail/Incomplet
 
 **Create a new page with test results:**
 ```bash
-conflow new --title "Test Report" --test-results
+poetry run conflow new --title "Test Report" --test-results
 
 # You'll be prompted:
 #   Load Haul Dump Cycle - Raptor: Pass or Fail? P
@@ -190,7 +201,7 @@ conflow new --title "Test Report" --test-results
 
 **Edit an existing page's test results:**
 ```bash
-conflow edit
+poetry run conflow edit
 
 # You'll be prompted for page ID:
 #   Page ID: 2436039300

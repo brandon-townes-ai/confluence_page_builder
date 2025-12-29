@@ -280,31 +280,31 @@ def update_test_table(
 
             # Determine background color based on result
             if result in ["P", "Pass"]:
-                bg_color = "#dff0d8"  # Light green for Pass
+                bg_color = "Green"  # Confluence color name for Pass
             elif result in ["F", "Fail"]:
-                bg_color = "#f2dede"  # Light red for Fail
+                bg_color = "Red"  # Confluence color name for Fail
             else:
                 bg_color = None  # No color for Incomplete
 
-            # Update the <p> tag inside, or the cell directly
+            # Update the cell text
             p_tag = cell.find("p")
             if p_tag:
                 p_tag.string = result
-                if bg_color:
-                    # Add background color to the p tag
-                    current_style = p_tag.get("style", "")
-                    if current_style and not current_style.endswith(";"):
-                        current_style += ";"
-                    p_tag["style"] = f"{current_style}background-color: {bg_color};"
             else:
                 cell.string = result
 
-            # Also set background color on the cell itself
+            # Set background color using Confluence's data-highlight-colour attribute
             if bg_color:
+                cell["data-highlight-colour"] = bg_color.lower()
+                # Also add inline style as fallback
                 current_style = cell.get("style", "")
                 if current_style and not current_style.endswith(";"):
                     current_style += ";"
-                cell["style"] = f"{current_style}background-color: {bg_color};"
+                # Use Confluence's color palette
+                if bg_color == "Green":
+                    cell["style"] = f"{current_style}background-color: #dff0d8;"
+                elif bg_color == "Red":
+                    cell["style"] = f"{current_style}background-color: #f2dede;"
 
             logger.debug(f"Updated row {row_idx} {column} to '{result}' with color {bg_color}")
 
