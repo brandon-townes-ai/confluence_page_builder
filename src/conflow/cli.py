@@ -20,7 +20,7 @@ from conflow.interactive import (
 from conflow.template_processor import extract_placeholders, substitute_placeholders
 from conflow.test_results import process_test_results
 
-DEFAULT_TEMPLATE_PAGE_ID = "2129789334"
+DEFAULT_TEMPLATE_PAGE_ID = "2436039354"
 
 console = Console()
 logger = logging.getLogger(__name__)
