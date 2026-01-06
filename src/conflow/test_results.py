@@ -278,35 +278,33 @@ def update_test_table(
         if col_idx < len(cells):
             cell = cells[col_idx]
 
-            # Determine background color based on result
+            # Determine background color and display text based on result
             if result in ["P", "Pass"]:
-                bg_color = "Green"  # Confluence color name for Pass
+                confluence_color = "subtle-green"
+                display_text = result
             elif result in ["F", "Fail"]:
-                bg_color = "Red"  # Confluence color name for Fail
+                confluence_color = "subtle-red"
+                display_text = result
+            elif result in ["I", "Incomplete"]:
+                confluence_color = "bold-gray"
+                display_text = "-"  # Replace I with dash
             else:
-                bg_color = None  # No color for Incomplete
+                confluence_color = None
+                display_text = result
 
             # Update the cell text
             p_tag = cell.find("p")
             if p_tag:
-                p_tag.string = result
+                p_tag.string = display_text
             else:
-                cell.string = result
+                cell.string = display_text
 
-            # Set background color using Confluence's data-highlight-colour attribute
-            if bg_color:
-                cell["data-highlight-colour"] = bg_color.lower()
-                # Also add inline style as fallback
-                current_style = cell.get("style", "")
-                if current_style and not current_style.endswith(";"):
-                    current_style += ";"
-                # Use Confluence's color palette
-                if bg_color == "Green":
-                    cell["style"] = f"{current_style}background-color: #dff0d8;"
-                elif bg_color == "Red":
-                    cell["style"] = f"{current_style}background-color: #f2dede;"
+            # Set Confluence background color attribute
+            if confluence_color:
+                # Use Confluence's data-highlight-colour attribute
+                cell["data-highlight-colour"] = confluence_color
 
-            logger.debug(f"Updated row {row_idx} {column} to '{result}' with color {bg_color}")
+            logger.debug(f"Updated row {row_idx} {column} to '{result}' with color {confluence_color}")
 
     return str(soup)
 

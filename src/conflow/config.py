@@ -3,7 +3,7 @@
 import os
 from typing import Optional
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 from conflow.exceptions import ConfigurationError
 from conflow.models import ConfluenceConfig
