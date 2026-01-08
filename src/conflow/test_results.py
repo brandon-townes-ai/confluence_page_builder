@@ -299,12 +299,26 @@ def update_test_table(
             else:
                 cell.string = display_text
 
-            # Set Confluence background color attribute
+            # Set Confluence background color using both attribute and inline style
             if confluence_color:
                 # Use Confluence's data-highlight-colour attribute
                 cell["data-highlight-colour"] = confluence_color
 
-            logger.debug(f"Updated row {row_idx} {column} to '{result}' with color {confluence_color}")
+                # Also add inline style for storage format compatibility
+                color_map = {
+                    "subtle-green": "rgb(216, 241, 220)",  # Confluence subtle green
+                    "subtle-red": "rgb(255, 219, 219)",    # Confluence subtle red
+                    "bold-gray": "rgb(172, 176, 180)",     # Confluence bold gray
+                }
+
+                if confluence_color in color_map:
+                    current_style = cell.get("style", "")
+                    if current_style and not current_style.endswith(";"):
+                        current_style += ";"
+                    cell["style"] = f"{current_style}background-color: {color_map[confluence_color]};"
+                    logger.debug(f"Set inline style with color {color_map[confluence_color]}")
+
+            logger.debug(f"Updated row {row_idx} {column} to '{display_text}' with color {confluence_color}")
 
     return str(soup)
 
