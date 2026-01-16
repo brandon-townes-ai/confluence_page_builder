@@ -166,6 +166,24 @@ class TestCollectTestResult:
 
             assert result == "I"
 
+    def test_accepts_dash(self):
+        """Test accepts '-' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "-"
+
+            result = collect_test_result("Test Scenario", "Raptor")
+
+            assert result == "-"
+
+    def test_accepts_skipped(self):
+        """Test accepts 'Skipped' as valid input."""
+        with patch("conflow.interactive.Prompt") as mock_prompt:
+            mock_prompt.ask.return_value = "Skipped"
+
+            result = collect_test_result("Test Scenario", "HM400")
+
+            assert result == "-"
+
     def test_case_insensitive(self):
         """Test input is case insensitive."""
         with patch("conflow.interactive.Prompt") as mock_prompt:
@@ -183,6 +201,11 @@ class TestCollectTestResult:
             mock_prompt.ask.return_value = "incomplete"
             result = collect_test_result("Test", "Raptor")
             assert result == "I"
+
+            # Test lowercase skipped
+            mock_prompt.ask.return_value = "skipped"
+            result = collect_test_result("Test", "Raptor")
+            assert result == "-"
 
     def test_reprompts_on_invalid_input(self):
         """Test reprompts when invalid input is provided."""

@@ -150,7 +150,7 @@ def _handle_edit_mode(ctx, non_interactive: bool, verbose: bool):
     "--test-results",
     is_flag=True,
     default=True,
-    help="Interactively fill in test results table (P/F/I)",
+    help="Interactively fill in test results table (P/F/I/-)",
 )
 @click.option(
     "--non-interactive",
@@ -195,7 +195,7 @@ def edit(ctx, test_results: bool, non_interactive: bool):
     "--test-results",
     is_flag=True,
     default=False,
-    help="Interactively fill in test results table (P/F/I)",
+    help="Interactively fill in test results table (P/F/I/-)",
 )
 @click.pass_context
 def new(

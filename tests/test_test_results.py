@@ -224,6 +224,66 @@ class TestUpdateTestTable:
         updated_html = update_test_table(html, results)
         assert updated_html == html
 
+    def test_skipped_displays_with_gray_background(self, sample_test_table_html):
+        """Test that '-' (skipped) displays with bold-gray background."""
+        results = {(0, "raptor"): "-"}
+        updated_html = update_test_table(sample_test_table_html, results)
+
+        soup = BeautifulSoup(updated_html, "html.parser")
+        table = find_test_table(str(soup))
+        tbody = table.find("tbody")
+        data_rows = [tr for tr in tbody.find_all("tr") if not tr.find("th")]
+
+        raptor_cell = data_rows[0].find_all("td")[3]
+        assert raptor_cell.get_text(strip=True) == "-"
+        assert raptor_cell.get("class") == ["highlight-grey"]
+        assert raptor_cell.get("data-highlight-colour") == "grey"
+
+    def test_incomplete_displays_with_no_background(self, sample_test_table_html):
+        """Test that 'I' (incomplete) displays with no background color."""
+        results = {(0, "raptor"): "I"}
+        updated_html = update_test_table(sample_test_table_html, results)
+
+        soup = BeautifulSoup(updated_html, "html.parser")
+        table = find_test_table(str(soup))
+        tbody = table.find("tbody")
+        data_rows = [tr for tr in tbody.find_all("tr") if not tr.find("th")]
+
+        raptor_cell = data_rows[0].find_all("td")[3]
+        assert raptor_cell.get_text(strip=True) == "I"
+        assert raptor_cell.get("class") is None
+        assert raptor_cell.get("data-highlight-colour") is None
+
+    def test_pass_displays_with_green_background(self, sample_test_table_html):
+        """Test that 'P' (pass) displays with green background."""
+        results = {(0, "raptor"): "P"}
+        updated_html = update_test_table(sample_test_table_html, results)
+
+        soup = BeautifulSoup(updated_html, "html.parser")
+        table = find_test_table(str(soup))
+        tbody = table.find("tbody")
+        data_rows = [tr for tr in tbody.find_all("tr") if not tr.find("th")]
+
+        raptor_cell = data_rows[0].find_all("td")[3]
+        assert raptor_cell.get_text(strip=True) == "P"
+        assert raptor_cell.get("class") == ["highlight-green"]
+        assert raptor_cell.get("data-highlight-colour") == "green"
+
+    def test_fail_displays_with_red_background(self, sample_test_table_html):
+        """Test that 'F' (fail) displays with red background."""
+        results = {(0, "raptor"): "F"}
+        updated_html = update_test_table(sample_test_table_html, results)
+
+        soup = BeautifulSoup(updated_html, "html.parser")
+        table = find_test_table(str(soup))
+        tbody = table.find("tbody")
+        data_rows = [tr for tr in tbody.find_all("tr") if not tr.find("th")]
+
+        raptor_cell = data_rows[0].find_all("td")[3]
+        assert raptor_cell.get_text(strip=True) == "F"
+        assert raptor_cell.get("class") == ["highlight-red"]
+        assert raptor_cell.get("data-highlight-colour") == "red"
+
 
 class TestProcessTestResults:
     """Tests for process_test_results function."""

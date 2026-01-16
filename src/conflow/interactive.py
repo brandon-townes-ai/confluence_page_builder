@@ -178,14 +178,14 @@ def confirm_update(title: str, page_id: str) -> bool:
 
 
 def collect_test_result(scenario_name: str, platform: str) -> str:
-    """Collect a single test result (Pass/Fail/Incomplete) for a scenario.
+    """Collect a single test result (Pass/Fail/Incomplete/Skipped) for a scenario.
 
     Args:
         scenario_name: Name of the test scenario.
         platform: Platform name ("Raptor" or "HM400").
 
     Returns:
-        "P" for Pass, "F" for Fail, or "I" for Incomplete.
+        "P" for Pass, "F" for Fail, "I" for Incomplete, or "-" for Skipped.
 
     Raises:
         InteractiveInputError: If user cancels input.
@@ -196,7 +196,7 @@ def collect_test_result(scenario_name: str, platform: str) -> str:
         try:
             result = Prompt.ask(
                 prompt_text,
-                choices=["P", "F", "I", "Pass", "Fail", "Incomplete", "p", "f", "i", "pass", "fail", "incomplete"],
+                choices=["P", "F", "I", "-", "Pass", "Fail", "Incomplete", "Skipped", "p", "f", "i", "pass", "fail", "incomplete", "skipped"],
                 show_choices=False,
             )
             normalized = result.strip().upper()
@@ -207,9 +207,11 @@ def collect_test_result(scenario_name: str, platform: str) -> str:
                 return "F"
             elif normalized in ["INCOMPLETE", "I"]:
                 return "I"
+            elif normalized in ["SKIPPED", "-"]:
+                return "-"
             else:
                 console.print(
-                    "    [yellow]Please enter 'Pass', 'Fail', or 'Incomplete' (or 'P'/'F'/'I')[/yellow]"
+                    "    [yellow]Please enter 'Pass', 'Fail', 'Incomplete', or 'Skipped' (or 'P'/'F'/'I'/'-')[/yellow]"
                 )
         except KeyboardInterrupt:
             console.print()

@@ -166,14 +166,14 @@ def collect_test_results(
     test_rows: List[TestResultRow],
     non_interactive: bool = False,
 ) -> Dict[Tuple[int, str], str]:
-    """Collect Pass/Fail/Incomplete results from user for test rows.
+    """Collect Pass/Fail/Incomplete/Skipped results from user for test rows.
 
     Args:
         test_rows: List of TestResultRow objects to collect results for.
         non_interactive: If True, raise error instead of prompting.
 
     Returns:
-        Dict mapping (row_index, column_name) to result ("P", "F", or "I").
+        Dict mapping (row_index, column_name) to result ("P", "F", "I", or "-").
 
     Raises:
         InteractiveInputError: If non_interactive=True and there are rows
@@ -217,7 +217,7 @@ def update_test_table(
 
     Args:
         html: The original HTML content.
-        results: Dict mapping (row_index, column_name) to result ("P" or "F").
+        results: Dict mapping (row_index, column_name) to result ("P", "F", "I", or "-").
 
     Returns:
         The modified HTML with results inserted.
@@ -285,9 +285,12 @@ def update_test_table(
             elif result in ["F", "Fail"]:
                 confluence_color = "subtle-red"
                 display_text = result
-            elif result in ["I", "Incomplete"]:
+            elif result == "-":
                 confluence_color = "bold-gray"
-                display_text = "-"  # Replace I with dash
+                display_text = "-"
+            elif result in ["I", "Incomplete"]:
+                confluence_color = None
+                display_text = "I"
             else:
                 confluence_color = None
                 display_text = result
@@ -299,24 +302,24 @@ def update_test_table(
             else:
                 cell.string = display_text
 
-            # Set Confluence background color using both attribute and inline style
+            # Set Confluence background color using class and data attributes
             if confluence_color:
-                # Use Confluence's data-highlight-colour attribute
-                cell["data-highlight-colour"] = confluence_color
-
-                # Also add inline style for storage format compatibility
-                color_map = {
-                    "subtle-green": "rgb(216, 241, 220)",  # Confluence subtle green
-                    "subtle-red": "rgb(255, 219, 219)",    # Confluence subtle red
-                    "bold-gray": "rgb(172, 176, 180)",     # Confluence bold gray
+                # Map to Confluence's highlight classes
+                color_class_map = {
+                    "subtle-green": "green",
+                    "subtle-red": "red",
+                    "bold-gray": "grey",
                 }
 
-                if confluence_color in color_map:
-                    current_style = cell.get("style", "")
-                    if current_style and not current_style.endswith(";"):
-                        current_style += ";"
-                    cell["style"] = f"{current_style}background-color: {color_map[confluence_color]};"
-                    logger.debug(f"Set inline style with color {color_map[confluence_color]}")
+                if confluence_color in color_class_map:
+                    color_name = color_class_map[confluence_color]
+
+                    # Set both the class and data-highlight-colour attributes
+                    # This is the correct format for Confluence storage format
+                    cell["class"] = f"highlight-{color_name}"
+                    cell["data-highlight-colour"] = color_name
+
+                    logger.debug(f"Set cell color class: highlight-{color_name}, data-highlight-colour: {color_name}")
 
             logger.debug(f"Updated row {row_idx} {column} to '{display_text}' with color {confluence_color}")
 
