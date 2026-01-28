@@ -306,9 +306,9 @@ def update_test_table(
             if confluence_color:
                 # Map to Confluence's highlight classes
                 color_class_map = {
-                    "subtle-green": "green",
-                    "subtle-red": "red",
-                    "bold-gray": "grey",
+                    "subtle-green": "rgb(227, 252, 239)",
+                    "subtle-red": "rgb(255,235,230)",
+                    "bold-gray": "rgb(230, 230, 230)",
                 }
 
                 if confluence_color in color_class_map:
