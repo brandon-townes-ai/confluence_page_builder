@@ -16,11 +16,12 @@ from conflow.exceptions import InteractiveInputError
 logger = logging.getLogger(__name__)
 
 # Column indices in the Test table (0-indexed)
-SCENARIO_COL = 0
-TEST_ID_COL = 1
-VARIATION_COL = 2
-RAPTOR_COL = 3
-HM400_COL = 4
+SCENARIO_COL = 0              # Scenario name column
+TEST_ID_COL = 1               # Test ID column
+RAP107_FEATURE_COL = 2        # RAP-107 Feature Result column
+RAP107_STABILITY_COL = 3      # RAP-107 Stack Stability column
+KOM101_FEATURE_COL = 4        # KOM-101 Feature Result column
+KOM101_STABILITY_COL = 5      # KOM-101 Stack Stability column
 
 
 @dataclass
@@ -28,10 +29,12 @@ class TestResultRow:
     """Represents a single test row from the Test table."""
 
     scenario_name: str
-    variation: str
-    raptor_status: str  # "I", "P", "F", or other
-    hm400_status: str  # "I", "P", "F", or other
-    row_index: int  # Index in the table (0 = first data row)
+    test_id: str                    # Test ID from column 1
+    rap107_feature_status: str      # RAP-107 Feature Result
+    rap107_stability_status: str    # RAP-107 Stack Stability
+    kom101_feature_status: str      # KOM-101 Feature Result
+    kom101_stability_status: str    # KOM-101 Stack Stability
+    row_index: int                  # Index in the table (0 = first data row)
 
 
 def find_test_table(html: str) -> Optional[Tag]:
@@ -72,7 +75,7 @@ def extract_test_rows(table: Tag) -> List[TestResultRow]:
         table: BeautifulSoup Tag for the table element.
 
     Returns:
-        List of TestResultRow objects for rows where Raptor or HM400 has 'I' status.
+        List of TestResultRow objects for rows where any of the 4 result columns has 'I' status.
     """
     rows = []
     tbody = table.find("tbody")
@@ -86,7 +89,8 @@ def extract_test_rows(table: Tag) -> List[TestResultRow]:
         logger.debug("No tr elements found in tbody")
         return rows
 
-    # Skip header row (first row with th elements)
+    # Skip header rows (rows with th elements)
+    # New template has 2 header rows
     data_rows = []
     for tr in all_trs:
         # If row contains th elements, it's a header row
@@ -102,43 +106,51 @@ def extract_test_rows(table: Tag) -> List[TestResultRow]:
     for row_idx, tr in enumerate(data_rows):
         cells = tr.find_all("td")
 
-        if len(cells) < 5:
+        if len(cells) < 6:
             # This might be a row that's part of a rowspan
             # Try to use fewer columns with current_scenario
-            if len(cells) >= 4:
-                # Row has Test ID, Variation, Raptor, HM400 (no Scenario due to rowspan)
-                variation = _get_cell_text(cells[1])
-                raptor_status = _get_cell_text(cells[2])
-                hm400_status = _get_cell_text(cells[3])
+            if len(cells) >= 5:
+                # Row has Test ID and 4 result columns (no Scenario due to rowspan)
+                test_id = _get_cell_text(cells[0])
+                rap107_feature = _get_cell_text(cells[1])
+                rap107_stability = _get_cell_text(cells[2])
+                kom101_feature = _get_cell_text(cells[3])
+                kom101_stability = _get_cell_text(cells[4])
                 scenario = current_scenario
             else:
                 logger.debug(f"Row {row_idx} has insufficient cells: {len(cells)}")
                 continue
         else:
-            # Full row with all columns
+            # Full row with all 6 columns
             scenario_cell = cells[SCENARIO_COL]
             # Check for rowspan and update current_scenario
             if scenario_cell.get("rowspan"):
                 current_scenario = _get_cell_text(scenario_cell)
             scenario = _get_cell_text(scenario_cell) or current_scenario
 
-            variation = _get_cell_text(cells[VARIATION_COL])
-            raptor_status = _get_cell_text(cells[RAPTOR_COL])
-            hm400_status = _get_cell_text(cells[HM400_COL])
+            test_id = _get_cell_text(cells[TEST_ID_COL])
+            rap107_feature = _get_cell_text(cells[RAP107_FEATURE_COL])
+            rap107_stability = _get_cell_text(cells[RAP107_STABILITY_COL])
+            kom101_feature = _get_cell_text(cells[KOM101_FEATURE_COL])
+            kom101_stability = _get_cell_text(cells[KOM101_STABILITY_COL])
 
-        # Only include rows where Raptor or HM400 has 'I' status
-        if raptor_status == "I" or hm400_status == "I":
+        # Only include rows where any of the 4 result columns has 'I' status
+        if (rap107_feature == "I" or rap107_stability == "I" or
+            kom101_feature == "I" or kom101_stability == "I"):
             test_row = TestResultRow(
                 scenario_name=scenario,
-                variation=variation,
-                raptor_status=raptor_status,
-                hm400_status=hm400_status,
+                test_id=test_id,
+                rap107_feature_status=rap107_feature,
+                rap107_stability_status=rap107_stability,
+                kom101_feature_status=kom101_feature,
+                kom101_stability_status=kom101_stability,
                 row_index=row_idx,
             )
             rows.append(test_row)
             logger.debug(
-                f"Row {row_idx}: {scenario} ({variation}) - "
-                f"Raptor={raptor_status}, HM400={hm400_status}"
+                f"Row {row_idx}: {scenario} (Test ID: {test_id}) - "
+                f"RAP107 Feature={rap107_feature}, RAP107 Stability={rap107_stability}, "
+                f"KOM101 Feature={kom101_feature}, KOM101 Stability={kom101_stability}"
             )
 
     return rows
@@ -174,6 +186,8 @@ def collect_test_results(
 
     Returns:
         Dict mapping (row_index, column_name) to result ("P", "F", "I", or "-").
+        column_name should be one of: "rap107_feature", "rap107_stability",
+        "kom101_feature", "kom101_stability"
 
     Raises:
         InteractiveInputError: If non_interactive=True and there are rows
@@ -193,18 +207,26 @@ def collect_test_results(
     results: Dict[Tuple[int, str], str] = {}
 
     for row in test_rows:
-        # Create display name with variation if present
+        # Create display name with Test ID
         display_name = row.scenario_name
-        if row.variation and row.variation.upper() != "N/A":
-            display_name = f"{row.scenario_name} ({row.variation})"
+        if row.test_id and row.test_id.upper() != "N/A":
+            display_name = f"{row.scenario_name} (Test ID: {row.test_id})"
 
-        if row.raptor_status == "I":
-            result = collect_test_result(display_name, "Raptor")
-            results[(row.row_index, "raptor")] = result
+        if row.rap107_feature_status == "I":
+            result = collect_test_result(display_name, "RAP-107 Feature Result")
+            results[(row.row_index, "rap107_feature")] = result
 
-        if row.hm400_status == "I":
-            result = collect_test_result(display_name, "HM400")
-            results[(row.row_index, "hm400")] = result
+        if row.rap107_stability_status == "I":
+            result = collect_test_result(display_name, "RAP-107 Stack Stability")
+            results[(row.row_index, "rap107_stability")] = result
+
+        if row.kom101_feature_status == "I":
+            result = collect_test_result(display_name, "KOM-101 Feature Result")
+            results[(row.row_index, "kom101_feature")] = result
+
+        if row.kom101_stability_status == "I":
+            result = collect_test_result(display_name, "KOM-101 Stack Stability")
+            results[(row.row_index, "kom101_stability")] = result
 
     return results
 
@@ -215,12 +237,20 @@ def update_test_table(
 ) -> str:
     """Update the Test table HTML with test results.
 
+    Updates cells with colored backgrounds for the new template structure.
+    Pass (P) and Fail (F) results display as colored cells with no text.
+    Incomplete (I) displays text with no color. Skipped (-) displays text
+    with gray background.
+
     Args:
         html: The original HTML content.
         results: Dict mapping (row_index, column_name) to result ("P", "F", "I", or "-").
+                 column_name should be one of: "rap107_feature", "rap107_stability",
+                 "kom101_feature", "kom101_stability"
 
     Returns:
-        The modified HTML with results inserted.
+        The modified HTML with results inserted. P/F cells will be colored
+        but empty, I/- cells will contain text.
     """
     if not results:
         return html
@@ -265,63 +295,82 @@ def update_test_table(
         cells = tr.find_all("td")
 
         # Determine column index based on cell count (handling rowspan)
-        if len(cells) >= 5:
-            # Full row
-            col_idx = RAPTOR_COL if column == "raptor" else HM400_COL
-        elif len(cells) >= 4:
-            # Row without scenario (due to rowspan)
-            col_idx = 2 if column == "raptor" else 3
+        # Map column name to index
+        column_map_full = {
+            "rap107_feature": RAP107_FEATURE_COL,
+            "rap107_stability": RAP107_STABILITY_COL,
+            "kom101_feature": KOM101_FEATURE_COL,
+            "kom101_stability": KOM101_STABILITY_COL,
+        }
+
+        column_map_rowspan = {
+            "rap107_feature": 1,
+            "rap107_stability": 2,
+            "kom101_feature": 3,
+            "kom101_stability": 4,
+        }
+
+        if len(cells) >= 6:
+            # Full row with all 6 columns
+            col_idx = column_map_full.get(column)
+        elif len(cells) >= 5:
+            # Row without scenario (due to rowspan) - 5 columns
+            col_idx = column_map_rowspan.get(column)
         else:
-            logger.warning(f"Row {row_idx} has insufficient cells for update")
+            logger.warning(f"Row {row_idx} has insufficient cells for update: {len(cells)}")
             continue
 
-        if col_idx < len(cells):
-            cell = cells[col_idx]
+        if col_idx is None or col_idx >= len(cells):
+            logger.warning(f"Column {column} not found or out of range in row {row_idx}")
+            continue
 
-            # Determine background color and display text based on result
-            if result in ["P", "Pass"]:
-                confluence_color = "subtle-green"
-                display_text = result
-            elif result in ["F", "Fail"]:
-                confluence_color = "subtle-red"
-                display_text = result
-            elif result == "-":
-                confluence_color = "bold-gray"
-                display_text = "-"
-            elif result in ["I", "Incomplete"]:
-                confluence_color = None
-                display_text = "I"
-            else:
-                confluence_color = None
-                display_text = result
+        cell = cells[col_idx]
 
-            # Update the cell text
-            p_tag = cell.find("p")
-            if p_tag:
-                p_tag.string = display_text
-            else:
-                cell.string = display_text
+        # Determine background color and display text based on result
+        if result in ["P", "Pass"]:
+            confluence_color = "subtle-green"
+            display_text = ""  # Empty string for Pass
+        elif result in ["F", "Fail"]:
+            confluence_color = "subtle-red"
+            display_text = ""  # Empty string for Fail
+        elif result == "-":
+            confluence_color = "bold-gray"
+            display_text = "-"
+        elif result in ["I", "Incomplete"]:
+            confluence_color = None
+            display_text = "I"
+        else:
+            confluence_color = None
+            display_text = result
 
-            # Set Confluence background color using class and data attributes
-            if confluence_color:
-                # Map to Confluence's highlight classes
-                color_class_map = {
-                    "subtle-green": "rgb(227, 252, 239)",
-                    "subtle-red": "rgb(255,235,230)",
-                    "bold-gray": "rgb(230, 230, 230)",
-                }
+        # Update the cell text
+        p_tag = cell.find("p")
+        if p_tag:
+            p_tag.string = display_text
+        else:
+            cell.string = display_text
 
-                if confluence_color in color_class_map:
-                    color_name = color_class_map[confluence_color]
+        # Set Confluence background color using class and data attributes
+        if confluence_color:
+            # Map to Confluence's highlight classes
+            color_class_map = {
+                "subtle-green": "rgb(227, 252, 239)",
+                "subtle-red": "rgb(255,235,230)",
+                "bold-gray": "rgb(230, 230, 230)",
+            }
 
-                    # Set both the class and data-highlight-colour attributes
-                    # This is the correct format for Confluence storage format
-                    cell["class"] = f"highlight-{color_name}"
-                    cell["data-highlight-colour"] = color_name
+            if confluence_color in color_class_map:
+                color_name = color_class_map[confluence_color]
 
-                    logger.debug(f"Set cell color class: highlight-{color_name}, data-highlight-colour: {color_name}")
+                # Set both the class and data-highlight-colour attributes
+                # This is the correct format for Confluence storage format
+                # Note: Must set class as a list to prevent BeautifulSoup from splitting on spaces
+                cell["class"] = [f"highlight-{color_name}"]
+                cell["data-highlight-colour"] = color_name
 
-            logger.debug(f"Updated row {row_idx} {column} to '{display_text}' with color {confluence_color}")
+                logger.debug(f"Set cell color class: highlight-{color_name}, data-highlight-colour: {color_name}")
+
+        logger.debug(f"Updated row {row_idx} {column} to '{display_text}' with color {confluence_color}")
 
     return str(soup)
 
