@@ -20,8 +20,6 @@ from conflow.interactive import (
 from conflow.template_processor import extract_placeholders, substitute_placeholders
 from conflow.test_results import process_test_results
 
-DEFAULT_TEMPLATE_PAGE_ID = "2436039354"
-
 console = Console()
 logger = logging.getLogger(__name__)
 
@@ -176,8 +174,8 @@ def edit(ctx, test_results: bool, non_interactive: bool):
 @click.option("--space-key", help="Confluence space key (uses CONFLUENCE_DEFAULT_SPACE_KEY if not provided)")
 @click.option(
     "--template-page-id",
-    default=DEFAULT_TEMPLATE_PAGE_ID,
-    help=f"Template page ID (default: {DEFAULT_TEMPLATE_PAGE_ID})",
+    default=None,
+    help="Template page ID (uses CONFLUENCE_DEFAULT_TEMPLATE_PAGE_ID if not provided)",
 )
 @click.option(
     "--placeholder",
@@ -228,6 +226,11 @@ def new(
             space_key = config.default_space_key
             if space_key:
                 logger.debug(f"Using default space key from config: {space_key}")
+
+        if not template_page_id:
+            template_page_id = config.default_template_page_id
+            if template_page_id:
+                logger.debug(f"Using default template page ID from config: {template_page_id}")
 
         # Validate required values (either from flags or config)
         if not parent_page_id:

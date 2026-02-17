@@ -13,6 +13,7 @@ class ConfluenceConfig(BaseModel):
     api_token: str
     default_parent_page_id: Optional[str] = None
     default_space_key: Optional[str] = None
+    default_template_page_id: Optional[str] = None
 
 
 class PageContent(BaseModel):

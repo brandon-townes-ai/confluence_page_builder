@@ -30,6 +30,7 @@ def load_config(env_file: Optional[str] = None, load_dotenv_file: bool = True) -
     api_token = os.environ.get("CONFLUENCE_API_TOKEN")
     default_parent_page_id = os.environ.get("CONFLUENCE_DEFAULT_PARENT_PAGE_ID")
     default_space_key = os.environ.get("CONFLUENCE_DEFAULT_SPACE_KEY")
+    default_template_page_id = os.environ.get("CONFLUENCE_DEFAULT_TEMPLATE_PAGE_ID")
 
     missing = []
     if not base_url:
@@ -51,4 +52,5 @@ def load_config(env_file: Optional[str] = None, load_dotenv_file: bool = True) -
         api_token=api_token,
         default_parent_page_id=default_parent_page_id,
         default_space_key=default_space_key,
+        default_template_page_id=default_template_page_id,
     )
