@@ -5,6 +5,14 @@ from typing import Dict, List
 
 from conflow.exceptions import TemplateError
 
+_LOCAL_ID_PATTERN = re.compile(r'\s+(?:(?:ac|ri):)?local-id="[^"]*"')
+_CARD_APPEARANCE_PATTERN = re.compile(r'\s+ac:card-appearance="[^"]*"')
+_LINK_BODY_PATTERN = re.compile(r'<ac:link-body>(.*?)</ac:link-body>', re.DOTALL)
+_VERSION_AT_SAVE_PATTERN = re.compile(r'\s+ri:version-at-save="[^"]*"')
+_MACRO_ID_PATTERN = re.compile(r'\s+ac:macro-id="[^"]*"')
+_TABLE_LAYOUT_PATTERN = re.compile(r'\s+data-layout="[^"]*"')
+_TABLE_WIDTH_PATTERN = re.compile(r'\s+data-table-width="[^"]*"')
+
 PLACEHOLDER_PATTERN = re.compile(r"\{\{([A-Za-z_]+)\}\}")
 
 
@@ -60,6 +68,26 @@ def substitute_placeholders(
         result = result.replace(placeholder, value)
 
     return result
+
+
+def strip_fabric_metadata(content: str) -> str:
+    """Remove Fabric editor metadata from Confluence storage format content.
+
+    Confluence's REST API rejects content containing Fabric-specific attributes
+    and elements when using the storage representation.
+    """
+    content = _LOCAL_ID_PATTERN.sub("", content)
+    content = _CARD_APPEARANCE_PATTERN.sub("", content)
+    content = _LINK_BODY_PATTERN.sub(r'\1', content)
+    content = _VERSION_AT_SAVE_PATTERN.sub("", content)
+    content = _MACRO_ID_PATTERN.sub("", content)
+    content = _TABLE_LAYOUT_PATTERN.sub("", content)
+    content = _TABLE_WIDTH_PATTERN.sub("", content)
+    return content
+
+
+# Keep old name as alias for backwards compatibility
+strip_local_ids = strip_fabric_metadata
 
 
 def format_placeholder_name(name: str) -> str:

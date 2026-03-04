@@ -22,6 +22,7 @@ class PageContent(BaseModel):
     id: str
     title: str
     body: str
+    body_adf: Optional[str] = None
     space_key: str
 
 

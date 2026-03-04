@@ -9,7 +9,7 @@ from rich.console import Console
 
 from conflow.config import load_config
 from conflow.confluence_client import ConfluenceClient
-from conflow.documentation_table import process_documentation_table
+from conflow.documentation_table import process_documentation_table, process_documentation_table_adf
 from conflow.exceptions import ConflowError, InteractiveInputError
 from conflow.interactive import (
     collect_placeholder_values,
@@ -17,7 +17,7 @@ from conflow.interactive import (
     confirm_update,
     prompt_for_page_id,
 )
-from conflow.template_processor import extract_placeholders, substitute_placeholders
+from conflow.template_processor import extract_placeholders, strip_fabric_metadata, substitute_placeholders
 from conflow.test_results import process_test_results
 
 console = Console()
@@ -98,6 +98,9 @@ def _handle_edit_mode(ctx, non_interactive: bool, verbose: bool):
         except Exception as e:
             logger.error(f"Failed to process test results: {e}", exc_info=verbose)
             raise
+
+        # Strip local-id attributes (rejected by Confluence REST API)
+        updated_body = strip_fabric_metadata(updated_body)
 
         # Confirm update
         if not non_interactive:
@@ -321,21 +324,33 @@ def new(
         elif placeholders:
             logger.debug(f"All {len(placeholders)} placeholders provided via command line")
 
-        # Substitute placeholders
+        # Substitute placeholders.
+        # Use native ADF if available (avoids Fabric editor validation errors).
+        # Always substitute on storage body too (used for test results processing).
         logger.debug("Substituting placeholders in template body")
         body = substitute_placeholders(template.body, values)
+        body_adf = None
+        if template.body_adf:
+            logger.debug("Substituting placeholders in native ADF body")
+            body_adf = substitute_placeholders(template.body_adf, values)
+            body_adf = process_documentation_table_adf(body_adf)
+        else:
+            # Fallback: strip Fabric metadata from storage format
+            logger.debug("No native ADF available, falling back to storage format")
+            body = process_documentation_table(body)
+            body = strip_fabric_metadata(body)
 
-        # Process Documentation table to auto-fill Date field
-        console.print("[dim]Processing Documentation table...[/dim]")
-        logger.debug("Processing Documentation table")
-        body = process_documentation_table(body)
-
-        # Process test results if enabled
+        # Process test results if enabled (only on storage body)
         if test_results:
             console.print("[dim]Processing test results table...[/dim]")
             logger.debug("Processing test results table")
             try:
                 body = process_test_results(body, non_interactive)
+                if body_adf:
+                    logger.debug(
+                        "Note: test results applied to storage body only; "
+                        "ADF body used for creation will not include these changes"
+                    )
             except InteractiveInputError:
                 raise
             except Exception as e:
@@ -359,6 +374,7 @@ def new(
                 parent_id=parent_page_id,
                 title=title,
                 body=body,
+                body_adf=body_adf,
             )
             logger.debug(f"Page created successfully: id={created_page.id}, url={created_page.url}")
         except Exception as e:

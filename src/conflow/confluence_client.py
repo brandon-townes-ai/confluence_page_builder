@@ -1,7 +1,8 @@
 """Confluence API client wrapper."""
 
 import logging
-from urllib.parse import quote
+from typing import Optional
+from urllib.parse import urlparse
 
 from atlassian import Confluence
 from requests.exceptions import ConnectionError, Timeout
@@ -34,6 +35,8 @@ class ConfluenceClient:
             password=config.api_token,
             cloud=True,
         )
+        parsed = urlparse(config.base_url.rstrip("/"))
+        self._host_url = f"{parsed.scheme}://{parsed.netloc}"
 
     def validate_credentials(self) -> bool:
         """Validate that the credentials are correct.
@@ -51,7 +54,6 @@ class ConfluenceClient:
             if permissions are insufficient.
         """
         try:
-            # Use a lightweight API call that doesn't require special permissions
             self._client.get_all_spaces(start=0, limit=1)
             return True
         except ConnectionError as e:
@@ -60,27 +62,23 @@ class ConfluenceClient:
             raise NetworkError(f"Connection timed out: {e}")
         except Exception as e:
             error_str = str(e).lower()
-            # 401 = bad credentials (fail)
             if "401" in error_str or "unauthorized" in error_str:
                 raise AuthenticationError(
                     "Authentication failed. Check your email and API token."
                 )
-            # 403 = valid credentials but restricted permissions (continue)
-            # The token is authenticated but may not have broad access
-            # Let actual operations determine if permissions are sufficient
             if "403" in error_str or "forbidden" in error_str:
                 return True
-            # Other errors
             raise NetworkError(f"Failed to validate credentials: {e}")
 
     def get_page_by_id(self, page_id: str) -> PageContent:
-        """Fetch a page by its ID.
+        """Fetch a page by its ID, including both storage and ADF representations.
 
         Args:
             page_id: The Confluence page ID.
 
         Returns:
-            PageContent with the page details.
+            PageContent with the page details. body_adf contains the native
+            Atlassian Document Format if available.
 
         Raises:
             PageNotFoundError: If the page doesn't exist.
@@ -89,15 +87,19 @@ class ConfluenceClient:
         try:
             page = self._client.get_page_by_id(
                 page_id,
-                expand="body.storage,space",
+                expand="body.storage,body.atlas_doc_format,space",
             )
             if not page:
                 raise PageNotFoundError(f"Page with ID {page_id} not found")
 
+            body_storage = page["body"]["storage"]["value"]
+            body_adf = page["body"].get("atlas_doc_format", {}).get("value")
+
             return PageContent(
                 id=str(page["id"]),
                 title=page["title"],
-                body=page["body"]["storage"]["value"],
+                body=body_storage,
+                body_adf=body_adf,
                 space_key=page["space"]["key"],
             )
         except PageNotFoundError:
@@ -122,14 +124,20 @@ class ConfluenceClient:
         parent_id: str,
         title: str,
         body: str,
+        body_adf: Optional[str] = None,
     ) -> CreatedPage:
         """Create a new page under a parent page.
+
+        If body_adf (native Atlassian Document Format) is provided, it is used
+        for creation to avoid Fabric editor validation errors that occur when
+        posting storage format content back to Confluence Cloud.
 
         Args:
             space_key: The space key where the page will be created.
             parent_id: The ID of the parent page.
             title: The title of the new page.
-            body: The body content in storage format.
+            body: The body content in storage format (used as fallback).
+            body_adf: The body content in ADF format (preferred).
 
         Returns:
             CreatedPage with the new page details.
@@ -139,27 +147,33 @@ class ConfluenceClient:
             ConfluenceAPIError: If the API call fails.
         """
         try:
-            result = self._client.create_page(
-                space=space_key,
-                title=title,
-                body=body,
-                parent_id=parent_id,
-                type="page",
-                representation="storage",
-            )
-
-            # Construct URL with proper format including title
-            # Expected: /wiki/spaces/SPACE/pages/ID/URL-Encoded-Title
-            if "_links" in result and "webui" in result["_links"]:
-                # Use the webui link from API if available (most reliable)
-                page_url = f"{self.config.base_url}{result['_links']['webui']}"
+            if body_adf:
+                logger.debug("Creating page using native ADF representation")
+                result = self._client.create_page(
+                    space=space_key,
+                    parent_id=parent_id,
+                    title=title,
+                    body=body_adf,
+                    representation="atlas_doc_format",
+                )
             else:
-                # Fallback: construct URL manually with URL-encoded title
-                url_encoded_title = quote(result["title"], safe='')
-                page_url = f"{self.config.base_url}/spaces/{space_key}/pages/{result['id']}/{url_encoded_title}"
+                logger.debug("Creating page using storage representation")
+                result = self._client.create_page(
+                    space=space_key,
+                    parent_id=parent_id,
+                    title=title,
+                    body=body,
+                    representation="storage",
+                )
+
+            page_id = result["id"]
+            webui_path = result.get("_links", {}).get(
+                "webui", f"/wiki/spaces/{space_key}/pages/{page_id}"
+            )
+            page_url = f"{self._host_url}{webui_path}"
 
             return CreatedPage(
-                id=str(result["id"]),
+                id=str(page_id),
                 title=result["title"],
                 url=page_url,
             )
@@ -194,19 +208,18 @@ class ConfluenceClient:
 
         Args:
             page_id: The ID of the page to update.
-            title: The title of the page (must match current title or be updated).
+            title: The title of the page.
             body: The updated body content in storage format.
             space_key: The space key (required for URL construction).
 
         Returns:
-            CreatedPage with the updated page details (reusing model for consistency).
+            CreatedPage with the updated page details.
 
         Raises:
             PageNotFoundError: If the page doesn't exist.
             ConfluenceAPIError: If the API call fails.
         """
         try:
-            # Update the page (version is handled automatically by the library)
             result = self._client.update_page(
                 page_id=page_id,
                 title=title,
@@ -214,21 +227,16 @@ class ConfluenceClient:
                 representation="storage",
             )
 
-            # Construct URL with proper format
-            if "_links" in result and "webui" in result["_links"]:
-                # Use the webui link from API if available (most reliable)
-                page_url = f"{self.config.base_url}{result['_links']['webui']}"
-            else:
-                # Fallback: construct URL manually with URL-encoded title
-                url_encoded_title = quote(result["title"], safe='')
-                page_url = f"{self.config.base_url}/spaces/{space_key}/pages/{result['id']}/{url_encoded_title}"
+            webui_path = result.get("_links", {}).get(
+                "webui", f"/wiki/spaces/{space_key}/pages/{page_id}"
+            )
+            page_url = f"{self._host_url}{webui_path}"
 
             return CreatedPage(
                 id=str(result["id"]),
                 title=result["title"],
                 url=page_url,
             )
-
         except PageNotFoundError:
             raise
         except ConnectionError as e:
