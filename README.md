@@ -6,7 +6,7 @@ CLI tool for creating Confluence pages from templates with interactive placehold
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/brandon-townes-ai/confluence_page_builder
 cd confluence_page_builder
 
 # Option 1: Install with pip
@@ -29,6 +29,7 @@ CONFLUENCE_API_TOKEN=your_api_token
 # Optional - set defaults to avoid specifying on every command
 CONFLUENCE_DEFAULT_PARENT_PAGE_ID=2436039354
 CONFLUENCE_DEFAULT_SPACE_KEY=Echelon
+CONFLUENCE_DEFAULT_TEMPLATE_PAGE_ID=your_template_page_id
 ```
 
 **Required variables:**
@@ -39,6 +40,7 @@ CONFLUENCE_DEFAULT_SPACE_KEY=Echelon
 **Optional variables:**
 - `CONFLUENCE_DEFAULT_PARENT_PAGE_ID` - Default parent page ID for new pages
 - `CONFLUENCE_DEFAULT_SPACE_KEY` - Default space key for new pages
+- `CONFLUENCE_DEFAULT_TEMPLATE_PAGE_ID` - Default template page ID (required if `--template-page-id` is not passed to `conflow new`)
 
 To get an API token:
 1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
@@ -134,6 +136,10 @@ The tool will then:
 
 Templates use the `{{FIELD_NAME}}` format for placeholders (uppercase letters and underscores only).
 
+### Auto-Populated Placeholders
+
+The `{{DATE}}` placeholder (any case variation) is automatically populated with the current date in `Mon DD, YYYY` format (e.g., `Mar 05, 2026`). You do not need to provide it via `-p` or interactive prompt.
+
 ### Providing Placeholder Values
 
 There are three ways to provide placeholder values:
@@ -213,7 +219,8 @@ poetry run conflow edit
 
 ### Input Options
 
-- Type `Pass`, `P`, `Fail`, `F`, `Incomplete`, or `I` (case-insensitive)
+- Type `Pass`, `P`, `Fail`, `F`, `Incomplete`, `I`, or `-` (case-insensitive)
+- `-` marks the test as not applicable (no color applied)
 - Rows that already have "P", "F", "Pass", or "Fail" are **automatically skipped**
 - Use "I" to mark tests that are incomplete/not yet run
 - Cannot be used with `--non-interactive` if any tests need input
