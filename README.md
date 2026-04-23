@@ -9,11 +9,12 @@ CLI tool for creating Confluence pages from templates with interactive placehold
 git clone https://github.com/brandon-townes-ai/confluence_page_builder
 cd confluence_page_builder
 
-# Option 1: Install with pip
-pip install -r requirements.txt
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Option 2: Install with Poetry (if available)
-poetry install
+# Install as editable package (reads deps from pyproject.toml)
+pip install -e .
 ```
 
 ## Configuration
@@ -53,11 +54,8 @@ Conflow has two main commands:
 
 **Quick Start:**
 ```bash
-# Create a new page
-poetry run conflow new --title "My Page Title"
-
-# Edit an existing page's test results
-poetry run conflow edit
+conflow new --title "My Page Title"
+conflow edit
 ```
 
 That's it! Parent page ID and space key are configured in your `.env` file.
@@ -68,21 +66,21 @@ Create a new Confluence page from a template.
 
 ```bash
 # Simple usage (uses config defaults for parent-page-id and space-key)
-poetry run conflow new --title "My New Page"
+conflow new --title "My New Page"
 
 # Create a page with test results
-poetry run conflow new --title "Test Report" --test-results
+conflow new --title "Test Report" --test-results
 
 # Provide placeholder values via command line
-poetry run conflow new --title "My Page" \
+conflow new --title "My Page" \
   -p PROJECT_NAME="My Project" \
   -p OWNER="John Doe"
 
 # Override config defaults if needed
-poetry run conflow new --title "My Page" --parent-page-id 999999 --space-key OTHER_SPACE
+conflow new --title "My Page" --parent-page-id 999999 --space-key OTHER_SPACE
 
 # Create a page with a custom template
-poetry run conflow new --title "My Page" --template-page-id 999999
+conflow new --title "My Page" --template-page-id 999999
 ```
 
 **Options for `conflow new`:**
@@ -104,10 +102,10 @@ Edit an existing Confluence page's test results. Test results are enabled by def
 
 ```bash
 # Edit an existing page (prompts for page ID)
-poetry run conflow edit
+conflow edit
 
 # Enable verbose logging
-poetry run conflow --verbose edit
+conflow --verbose edit
 ```
 
 When you run `conflow edit`, you'll be prompted to enter the page ID:
@@ -146,27 +144,27 @@ There are three ways to provide placeholder values:
 
 1. **Interactive Mode (default)**: You'll be prompted to enter each placeholder value when creating a page.
    ```bash
-   poetry run conflow new --title "My Page"
+   conflow new --title "My Page"
    # Prompts: "Enter value for PROJECT_NAME:", "Enter value for OWNER:", etc.
    ```
 
 2. **Command-Line Mode**: Provide values via `-p` or `--placeholder` flags.
    ```bash
-   poetry run conflow new --title "My Page" \
+   conflow new --title "My Page" \
      -p PROJECT_NAME="My Project" \
      -p OWNER="John Doe"
    ```
 
 3. **Mixed Mode**: Provide some values via command line, get prompted for the rest.
    ```bash
-   poetry run conflow new --title "My Page" \
+   conflow new --title "My Page" \
      -p PROJECT_NAME="My Project"
    # Only prompts for remaining placeholders (e.g., OWNER)
    ```
 
 For automation, use `--non-interactive` to ensure all placeholders are provided via command line:
 ```bash
-poetry run conflow new --title "My Page" \
+conflow new --title "My Page" \
   -p FIELD1="Value1" -p FIELD2="Value2" --non-interactive
 # Fails if any placeholders are missing
 ```
@@ -196,7 +194,7 @@ The test results feature allows you to interactively fill in Pass/Fail/Incomplet
 
 **Create a new page with test results:**
 ```bash
-poetry run conflow new --title "Test Report" --test-results
+conflow new --title "Test Report" --test-results
 
 # You'll be prompted:
 #   Load Haul Dump Cycle - Raptor: Pass or Fail? P
@@ -207,7 +205,7 @@ poetry run conflow new --title "Test Report" --test-results
 
 **Edit an existing page's test results:**
 ```bash
-poetry run conflow edit
+conflow edit
 
 # You'll be prompted for page ID:
 #   Page ID: 2436039300
@@ -228,20 +226,17 @@ poetry run conflow edit
 ## Development
 
 ```bash
-# Install dev dependencies
+# Set up venv
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install package + dev dependencies
+pip install -e .
 pip install -r requirements-dev.txt
 
 # Run tests
-PYTHONPATH=src pytest -v
+pytest
 
-# Run the CLI in development
-PYTHONPATH=src python -m conflow --help
-```
-
-Alternatively, with Poetry:
-
-```bash
-poetry install
-poetry run pytest
-poetry run conflow --help
+# Run the CLI
+conflow --help
 ```

@@ -1,7 +1,8 @@
 """Confluence API client wrapper."""
 
 import logging
-from typing import Optional
+import time
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
 from atlassian import Confluence
@@ -38,6 +39,30 @@ class ConfluenceClient:
         parsed = urlparse(config.base_url.rstrip("/"))
         self._host_url = f"{parsed.scheme}://{parsed.netloc}"
 
+    def _call_with_retry(self, fn: Callable, *args: Any, max_attempts: int = 3, backoff: float = 1.0, **kwargs: Any) -> Any:
+        """Call fn, retrying on transient connection errors with linear backoff.
+
+        Args:
+            fn: The callable to invoke.
+            max_attempts: Maximum number of attempts before re-raising.
+            backoff: Base wait time in seconds; multiplied by the attempt number.
+
+        Raises:
+            ConnectionError, Timeout: After all attempts are exhausted.
+        """
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return fn(*args, **kwargs)
+            except (ConnectionError, Timeout) as e:
+                if attempt == max_attempts:
+                    raise
+                wait = backoff * attempt
+                logger.warning(
+                    "Connection error (attempt %d/%d), retrying in %.0fs: %s",
+                    attempt, max_attempts, wait, e,
+                )
+                time.sleep(wait)
+
     def validate_credentials(self) -> bool:
         """Validate that the credentials are correct.
 
@@ -54,7 +79,7 @@ class ConfluenceClient:
             if permissions are insufficient.
         """
         try:
-            self._client.get_all_spaces(start=0, limit=1)
+            self._call_with_retry(self._client.get_all_spaces, start=0, limit=1)
             return True
         except ConnectionError as e:
             raise NetworkError(f"Failed to connect to Confluence: {e}")
@@ -85,7 +110,8 @@ class ConfluenceClient:
             ConfluenceAPIError: If the API call fails.
         """
         try:
-            page = self._client.get_page_by_id(
+            page = self._call_with_retry(
+                self._client.get_page_by_id,
                 page_id,
                 expand="body.storage,body.atlas_doc_format,space",
             )
@@ -149,7 +175,8 @@ class ConfluenceClient:
         try:
             if body_adf:
                 logger.debug("Creating page using native ADF representation")
-                result = self._client.create_page(
+                result = self._call_with_retry(
+                    self._client.create_page,
                     space=space_key,
                     parent_id=parent_id,
                     title=title,
@@ -158,7 +185,8 @@ class ConfluenceClient:
                 )
             else:
                 logger.debug("Creating page using storage representation")
-                result = self._client.create_page(
+                result = self._call_with_retry(
+                    self._client.create_page,
                     space=space_key,
                     parent_id=parent_id,
                     title=title,
@@ -220,7 +248,8 @@ class ConfluenceClient:
             ConfluenceAPIError: If the API call fails.
         """
         try:
-            result = self._client.update_page(
+            result = self._call_with_retry(
+                self._client.update_page,
                 page_id=page_id,
                 title=title,
                 body=body,
